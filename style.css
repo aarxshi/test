@@ -303,39 +303,28 @@ header {
 .zbtn { width: 36px; height: 36px; background: none; border: none; border-bottom: 1px solid var(--border); font-size: 18px; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .12s, color .12s; }
 .zbtn:last-child { border-bottom: none; }
 .zbtn:hover { background: var(--surface2); color: var(--accent); }
+.zbtn.gps-active { color: #2563eb; }
+.zbtn.gps-active svg { animation: gps-spin 1.5s linear infinite; }
+@keyframes gps-spin { to { transform: rotate(360deg); } }
 
-/* ── Live location button (3rd button in the zoom-ctrls stack) ──── */
-.zbtn.gps-active { color: #4285F4; }
-.zbtn.gps-loading { color: #4285F4; animation: gps-pulse-icon 1s ease-in-out infinite; }
-@keyframes gps-pulse-icon { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
-
-/* ── Live location marker (blue dot, Gmaps-style) ─────── */
-.gps-dot-wrap { width: 22px; height: 22px; position: relative; }
+/* GPS dot on map */
+.gps-dot-wrap { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
 .gps-dot {
-  position: absolute; top: 50%; left: 50%; width: 16px; height: 16px;
-  margin: -8px 0 0 -8px; border-radius: 50%; background: #4285F4;
-  border: 2.5px solid #fff; box-shadow: 0 0 0 1px rgba(66,133,244,.35), 0 1px 4px rgba(0,0,0,.35);
-  animation: gps-dot-ring 2.2s ease-out infinite;
+  width: 14px; height: 14px; background: #2563eb;
+  border: 2.5px solid #fff; border-radius: 50%;
+  box-shadow: 0 0 0 0 rgba(37,99,235,0.4);
+  animation: gps-pulse 2s ease-out infinite;
 }
-@keyframes gps-dot-ring {
-  0%   { box-shadow: 0 0 0 1px rgba(66,133,244,.35), 0 0 0 0 rgba(66,133,244,.35); }
-  70%  { box-shadow: 0 0 0 1px rgba(66,133,244,.35), 0 0 0 14px rgba(66,133,244,0); }
-  100% { box-shadow: 0 0 0 1px rgba(66,133,244,.35), 0 0 0 0 rgba(66,133,244,0); }
-}
-.gps-heading {
-  position: absolute; top: 50%; left: 50%; width: 0; height: 0;
-  margin: -26px 0 0 -8px;
-  border-left: 8px solid transparent; border-right: 8px solid transparent;
-  border-bottom: 14px solid rgba(66,133,244,.55);
-  transform-origin: 8px 26px; transition: transform .25s linear;
-}
-/* Weak/ok fixes are shown honestly — paler dot, no confident pulse ring,
-   since we don't actually know precisely where you are yet */
-.gps-dot-wrap.gps-tier-weak .gps-dot { background: #9aa8b8; animation: none; box-shadow: 0 0 0 1px rgba(154,168,184,.4), 0 1px 4px rgba(0,0,0,.3); }
-.gps-dot-wrap.gps-tier-ok .gps-dot   { background: #6fa8f5; }
-
+.gps-dot.gps-stale { background: #94a3b8; box-shadow: none; animation: none; }
+@keyframes gps-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(37,99,235,0.45); }
   70%  { box-shadow: 0 0 0 10px rgba(37,99,235,0); }
   100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+}
+.gps-accuracy {
+  position: absolute; border-radius: 50%;
+  background: rgba(37,99,235,0.12); border: 1px solid rgba(37,99,235,0.25);
+  pointer-events: none;
 }
 
 /* ── TOAST ──────────────────────────────────────────── */
@@ -384,11 +373,6 @@ header {
 ═══════════════════════════════════════════════════════ */
 @media (max-width: 767px) {
 
-  /* Prevent tap delay on interactive elements, but allow scroll on content */
-  * { touch-action: pan-y; }
-  button, a, .tab, .fab-btn, .zbtn { touch-action: manipulation; }
-  .brow { touch-action: pan-y; }  /* allow scroll starting on a row */
-
   header { padding: 0 14px; gap: 10px; }
   /* Hide desktop search/directions but KEEP wordmark and toggle */
   header .hdiv,
@@ -403,17 +387,13 @@ header {
   }
 
   .layout { position: relative; }
-  #map {
-    position: absolute; inset: 0;
-    /* Let map handle its own panning */
-    touch-action: pan-x pan-y pinch-zoom;
-  }
+  #map { position: absolute; inset: 0; }
   .zoom-ctrls { top: auto; bottom: 100px; right: 12px; }
   .map-legend { top: 16px; right: 12px; bottom: auto; padding: 9px 11px; display: none; }
   .leg-title  { font-size: 9px; margin-bottom: 6px; }
   .leg-item   { font-size: 10.5px; }
 
-  /* Sheet — promoted to its own compositor layer for smooth animation */
+  /* Sheet */
   .sidebar {
     width: 100% !important;
     min-width: unset !important;
@@ -422,23 +402,14 @@ header {
     opacity: 1 !important;
     position: absolute;
     bottom: 0; left: 0; right: 0;
-    height: 105vh;          /* extra 20vh below fold so spring overshoot never shows map */
+    height: 70vh;
     border-radius: 18px 18px 0 0;
     box-shadow: 0 -4px 24px rgba(0,0,0,0.13);
     border-top: 1px solid var(--border);
     z-index: 50;
     overflow: hidden;
     display: flex; flex-direction: column;
-    /* GPU-promote + smooth spring-like easing */
-    will-change: transform;
-    transition: transform .32s cubic-bezier(.32,0,.67,0);
-    /* Sheet itself should only scroll vertically, not pan the map */
-    touch-action: pan-y;
-  }
-
-  /* Snappy feel going to resting states */
-  .sidebar.sheet-snapping {
-    transition: transform .38s cubic-bezier(.34,1.56,.64,1);  /* spring overshoot */
+    transition: transform .28s cubic-bezier(.4,0,.2,1);
   }
 
   .sidebar.sheet-hidden {
@@ -446,61 +417,41 @@ header {
     pointer-events: none !important;
     box-shadow: none !important;
   }
-  .sidebar.sheet-open { transform: translateY(0); }
+  .sidebar.sheet-open    { transform: translateY(0); }
 
-  /* Resize handle becomes top drag bar — BIGGER tap target */
+  /* Resize handle becomes top drag bar on mobile */
   .resize-handle {
     position: relative !important;
     top: auto !important; right: auto !important;
     width: 100% !important;
-    height: 44px !important;      /* was 28px — now thumb-friendly */
+    height: 28px !important;
     cursor: ns-resize !important;
     flex-shrink: 0;
     align-items: center; justify-content: center;
     background: var(--surface);
     border-radius: 18px 18px 0 0;
     display: flex !important;
-    /* Handle drags sheet, not page */
-    touch-action: none;
   }
   .resize-handle::after { display: none !important; }
 
   .mobile-drag-bar {
     display: block;
-    width: 40px; height: 4px;
+    width: 36px; height: 4px;
     background: var(--border2);
     border-radius: 2px;
   }
 
-  /* Content areas — each must have min-height:0 so flex children can scroll */
-  .pane.active { overflow-y: auto; flex: 1; min-height: 0; touch-action: pan-y; }
-  .pane        { flex: 1; min-height: 0; overflow: hidden; }
-  .nav-inner   { overflow-y: auto; flex: 1; min-height: 0; touch-action: pan-y; }
-  .building-list { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; }
+  /* Content */
+  .pane.active { overflow-y: auto; flex: 1; min-height: 0; }
+  .pane        { flex: 1; min-height: 0; }
+  .nav-inner   { overflow-y: auto; flex: 1; }
+  .building-list { flex: 1; overflow-y: auto; }
+  .info-card   { max-height: none; border-top: 1px solid var(--border); flex-shrink: 0; }
 
-  /* Info card on mobile: scrollable within the half-sheet */
-  .info-card {
-    max-height: none;
-    border-top: none;
-    flex: 1;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-  }
-
-  /* Cap image so departments are visible without scrolling */
+  /* Cap image height on mobile — keeps ratio but won't eat the whole screen */
   .card-img-wrap {
     aspect-ratio: unset;
-    height: 140px;
-  }
-
-  /* Extra bottom breathing room so content clears home indicator */
-  .card-body { padding-bottom: max(24px, env(safe-area-inset-bottom, 24px)); }
-
-  /* Cap image height on mobile */
-  .card-img-wrap {
-    aspect-ratio: unset;
-    height: min(56vw, 220px);
+    height: min(56vw, 240px);
   }
 
   .sidebar, .building-list, .pane, .nav-inner {
@@ -511,73 +462,19 @@ header {
   .pane::-webkit-scrollbar,
   .nav-inner::-webkit-scrollbar { display: none; }
 
-  /* Peek card — shown when a building is tapped */
-  .peek-card {
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    background: var(--surface);
-    border-radius: 18px 18px 0 0;
-    box-shadow: 0 -4px 24px rgba(0,0,0,0.13);
-    border-top: 1px solid var(--border);
-    z-index: 65;
-    padding: 0 0 env(safe-area-inset-bottom, 16px);
-    display: none;
-    overflow-y: auto;
-    max-height: 80vh;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-  }
-  .peek-card.visible { display: block; animation: slideUpPeek .28s cubic-bezier(.22,1,.36,1); }
-
-  @keyframes slideUpPeek {
-    from { transform: translateY(100%); opacity: 0; }
-    to   { transform: translateY(0);   opacity: 1; }
-  }
-
-  .peek-drag-bar {
-    width: 40px; height: 4px;
-    background: var(--border2);
-    border-radius: 2px;
-    margin: 12px auto 0;
-  }
-  .peek-img {
-    width: 100%; height: 190px;
-    object-fit: cover;
-    margin-top: 12px;
-    display: none;
-  }
-  .peek-img.loaded { display: block; }
-  .peek-body { padding: 14px 18px 8px; }
-  .peek-name { font-family: 'Instrument Serif', serif; font-size: 20px; line-height: 1.2; margin-bottom: 3px; }
-  .peek-type { font-size: 12px; color: var(--text-muted); margin-bottom: 14px; }
-  .peek-btns { display: flex; gap: 8px; margin-bottom: 12px; }
-  .peek-btns .btn-sm { padding: 11px 0; font-size: 13.5px; }
-  .peek-expand {
-    display: flex; align-items: center; justify-content: center; gap: 5px;
-    font-size: 12.5px; color: var(--accent);
-    cursor: pointer; padding: 10px 0 6px;
-    border-top: 1px solid var(--border);
-    font-weight: 500;
-  }
-
-  /* FAB — hidden by default, CSS shows it whenever sheet-hidden class is active */
+  /* FAB — hidden by default, shown by JS when sheet is fully hidden */
   #mobileFab {
     display: none;
-    position: fixed;
-    bottom: 28px; left: 50%;
+    position: absolute;
+    bottom: 24px; left: 50%;
     transform: translateX(-50%);
-    z-index: 70;
+    z-index: 60;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 100px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     padding: 10px 20px; gap: 16px;
     align-items: center;
-    white-space: nowrap;
-  }
-  /* Pure CSS: whenever the sheet is dismissed, FAB appears — no JS required */
-  .layout:has(.sidebar.sheet-hidden) #mobileFab {
-    display: flex !important;
   }
   .fab-btn {
     display: flex; align-items: center; gap: 6px;
@@ -588,4 +485,3 @@ header {
   .fab-btn:hover  { color: var(--accent); background: var(--accent-bg); }
   .fab-btn.accent { color: var(--accent); }
 }
-
