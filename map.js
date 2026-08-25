@@ -8,7 +8,7 @@
 const map = new maplibregl.Map({
   container: 'map',
   style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-  center: window.innerWidth < 768 ? [77.566574, 12.908188] : [77.5667, 12.9075],
+  center: [77.5667, 12.9075],
   zoom: window.innerWidth < 768 ? 16.2 : 16.5,
   bearing: 90,
   attributionControl: false,
@@ -17,6 +17,7 @@ const map = new maplibregl.Map({
 map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
 map.on('load', () => {
+
   /* Raster overlay ─────────────────────────────────── */
   map.addSource('overlay', {
     type: 'image',
@@ -178,7 +179,7 @@ map.on('load', () => {
 
   map.on('click', 'building-fill', e => {
     const bid = String(e.features[0].properties?.id ?? e.features[0].id);
-    if (BUILDINGS[bid]) selectBuilding(bid, 'map');
+    if (BUILDINGS[bid]) selectBuilding(bid);
   });
 
   map.on('mouseenter', 'building-fill', () => map.getCanvas().style.cursor = 'pointer');
@@ -310,253 +311,117 @@ function getBuildingCenter(bid, origin) {
   ];
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   LIVE LOCATION
-   ────────────────────────────────────────────────────────────────
-   Raw browser GPS on a dense campus is genuinely noisy (typically
-   5–20m error outdoors, worse between buildings — the same "urban
-   canyon" effect that throws off phones downtown). Google Maps hides
-   this by fusing GPS with wifi/cell positioning and the phone's
-   motion sensors — a browser can't access any of that. What we CAN
-   do to get most of the way there:
-     1. Reject/downweight low-accuracy fixes instead of trusting every one
-     2. Smooth the last few fixes (rolling average) instead of jumping to each
-     3. Snap the smoothed point onto the path network (Router.snapToNetwork)
-        — like a car snapping onto a road — since you're almost always on
-        a path, not in a flowerbed
-     4. Animate the marker between fixes instead of teleporting it
-     5. Use the device compass for heading, since GPS heading is only
-        derived from movement and is useless standing still
-════════════════════════════════════════════════════════════════════ */
-
-const GPS_GOOD_ACCURACY_M  = 25;   // fixes at or below this are trusted fully, and enable path-snapping
-const GPS_OK_ACCURACY_M    = 60;   // fixes at or below this still count, just weighted down
-                                    // (nothing is ever hard-rejected — a weak fix beats no fix)
-const GPS_SMOOTH_WINDOW    = 4;    // rolling-average window size
-const GPS_SNAP_MAX_DIST_M  = 25;   // beyond this, trust raw fix over snapped one
-const GPS_ANIM_MS          = 650;  // marker glide duration between fixes
-const GPS_REROUTE_DRIFT_M  = 18;   // deviation from route before we recompute
-
+/* ── GPS / LOCATION ─────────────────────────────────── */
 let _gpsWatchId   = null;
-let _gpsRecent    = [];     // rolling buffer of accepted [lng,lat,accuracy]
-let _gpsSmoothed  = null;   // current smoothed (pre-snap) position
-let _gpsDisplayed = null;   // position actually drawn (post-snap, animated)
-let _gpsHeading   = null;
-let _gpsMarkerEl  = null;
-let _gpsAccuracyCircleId = 'gps-accuracy';
-let _gpsAnimFrame = null;
-let _gpsActiveRouteTo = null;   // building id we're live-navigating to, or null
-let _gpsFirstFix  = true;
-let _gpsLastTier  = null;   // 'good' | 'ok' | 'weak' — for toast de-duplication + visual state
+let _gpsMarker    = null;
+let _gpsAccuracy  = null;
+let _gpsCentre    = true;   // fly to position on first fix
+let _gpsStale     = false;
 
-function isGPSActive() { return _gpsWatchId !== null; }
+function toggleGPS() {
+  if (_gpsWatchId !== null) {
+    stopGPS();
+  } else {
+    startGPS();
+  }
+}
 
 function startGPS() {
   if (!navigator.geolocation) {
-    showToast('Location isn\'t supported on this browser');
+    showToast('GPS not supported on this device');
     return;
   }
-  if (_gpsWatchId !== null) { stopGPS(); return; } // toggle off if already on
-
-  _gpsRecent = [];
-  _gpsFirstFix = true;
-  document.getElementById('gpsBtn')?.classList.add('gps-loading');
-  showToast('Finding your location…');
-
-  requestCompassPermissionIfNeeded();
+  const btn = document.getElementById('gpsBtn');
+  btn.classList.add('gps-active');
+  const fab = document.getElementById('gpsFabBtn');
+  if (fab) fab.style.color = 'var(--accent)';
+  _gpsCentre = true;
 
   _gpsWatchId = navigator.geolocation.watchPosition(
-    onGPSFix, onGPSError,
-    { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+    onGPSUpdate,
+    onGPSError,
+    { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
   );
 }
 
 function stopGPS() {
-  if (_gpsWatchId !== null) navigator.geolocation.clearWatch(_gpsWatchId);
-  _gpsWatchId = null;
-  _gpsActiveRouteTo = null;
-  cancelAnimationFrame(_gpsAnimFrame);
-  document.getElementById('gpsBtn')?.classList.remove('gps-loading', 'gps-active');
-  removeGPSMarker();
-  if (map.getLayer(_gpsAccuracyCircleId)) map.removeLayer(_gpsAccuracyCircleId);
-  if (map.getSource(_gpsAccuracyCircleId)) map.removeSource(_gpsAccuracyCircleId);
+  if (_gpsWatchId !== null) {
+    navigator.geolocation.clearWatch(_gpsWatchId);
+    _gpsWatchId = null;
+  }
+  if (_gpsMarker)   { _gpsMarker.remove();   _gpsMarker   = null; }
+  if (_gpsAccuracy) { _gpsAccuracy.remove(); _gpsAccuracy = null; }
+  document.getElementById('gpsBtn').classList.remove('gps-active');
+  const fab2 = document.getElementById('gpsFabBtn');
+  if (fab2) fab2.style.color = '';
+}
+
+function onGPSUpdate(pos) {
+  const { longitude: lng, latitude: lat, accuracy } = pos.coords;
+  _gpsStale = false;
+
+
+
+  // Blue dot
+  if (!_gpsMarker) {
+    const dotWrap = document.createElement('div');
+    dotWrap.className = 'gps-dot-wrap';
+    const dot = document.createElement('div');
+    dot.className = 'gps-dot';
+    dot.id = 'gpsDot';
+    dotWrap.appendChild(dot);
+    _gpsMarker = new maplibregl.Marker({ element: dotWrap, anchor: 'center' })
+      .setLngLat([lng, lat]).addTo(map);
+  } else {
+    _gpsMarker.setLngLat([lng, lat]);
+  }
+
+  // Fly to on first fix, then just re-centre if button tapped again
+  if (_gpsCentre) {
+    map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 18), duration: 800 });
+    _gpsCentre = false;
+  }
+
+  // Stop spinning, keep pin blue
+  const btn = document.getElementById('gpsBtn');
+  btn.classList.remove('gps-active');
+  btn.style.color = '#2563eb';
+  const fab3 = document.getElementById('gpsFabBtn');
+  if (fab3) { fab3.style.color = '#2563eb'; }
+
+  // Update live distance in nav pane if routing from GPS
+  updateGPSRouteDistance(lng, lat);
+}
+
+function updateGPSRouteDistance(lng, lat) {
+  const fromSel = document.getElementById('fromSel');
+  const toSel   = document.getElementById('toSel');
+  if (!fromSel || fromSel.value !== 'GPS') return;
+  const to = toSel?.value;
+  if (!to || !Router.isReady()) return;
+
+  const toCenter = getBuildingCenter(to);
+  if (!toCenter) return;
+  const route = Router.find([lng, lat], toCenter);
+  if (!route) return;
+
+  const metres = Math.round(route.distanceM);
+  const mins   = Math.max(1, Math.round(metres / 80));
+  const dEl = document.getElementById('rDist');
+  const tEl = document.getElementById('rTime');
+  if (dEl) dEl.textContent = metres;
+  if (tEl) tEl.textContent = '~' + mins;
+
+  // Redraw route line
+  drawRoute(route.coords);
 }
 
 function onGPSError(err) {
+  stopGPS();
   const msgs = {
-    1: 'Location access denied — allow it in your browser settings',
-    2: 'Location signal lost',
-    3: 'Location request timed out — try again outdoors',
+    1: 'Location access denied — please allow in browser settings',
+    2: 'GPS signal lost',
+    3: 'GPS timed out',
   };
-  showToast(msgs[err.code] || 'Location error');
-  if (_gpsFirstFix) stopGPS(); // don't leave a spinner stuck if the very first fix fails
-}
-
-function onGPSFix(pos) {
-  const { longitude: lng, latitude: lat, accuracy, heading, speed } = pos.coords;
-  const acc = accuracy ?? 50;
-
-  // Never hard-reject a fix — a weak fix beats leaving the user with
-  // nothing on screen. Instead we weight it down in the average and
-  // skip path-snapping until we're confident enough to trust it.
-  document.getElementById('gpsBtn')?.classList.remove('gps-loading');
-  document.getElementById('gpsBtn')?.classList.add('gps-active');
-
-  // Tell the user what tier of signal they're on, but only when it
-  // actually changes tier — not on every single fix (that was the
-  // "stuck spamming weak GPS" toast spam before).
-  const tier = acc <= GPS_GOOD_ACCURACY_M ? 'good' : acc <= GPS_OK_ACCURACY_M ? 'ok' : 'weak';
-  if (tier !== _gpsLastTier) {
-    if (tier === 'good') showToast(`Locked in (±${Math.round(acc)}m)`);
-    else if (tier === 'weak') showToast(`Weak signal (±${Math.round(acc)}m) — showing your best available position`);
-    _gpsLastTier = tier;
-  }
-
-  // 1. Rolling average of recent fixes, weighted heavily toward more
-  //    accurate ones — a weak fix still nudges the average, just barely
-  _gpsRecent.push({ lng, lat, accuracy: acc });
-  if (_gpsRecent.length > GPS_SMOOTH_WINDOW) _gpsRecent.shift();
-
-  let wSum = 0, xSum = 0, ySum = 0;
-  for (const f of _gpsRecent) {
-    const w = 1 / (f.accuracy * f.accuracy); // inverse-square: good fixes dominate hard
-    wSum += w; xSum += f.lng * w; ySum += f.lat * w;
-  }
-  _gpsSmoothed = [xSum / wSum, ySum / wSum];
-
-  // 2. Only snap onto the path network once we trust the fix — snapping
-  //    a genuinely bad fix onto a path can put you on the WRONG path,
-  //    which is worse than an honest wide accuracy circle
-  let displayPoint = _gpsSmoothed;
-  if (tier !== 'weak' && Router.isReady()) {
-    const snap = Router.snapToNetwork(_gpsSmoothed);
-    if (snap && snap.distM <= GPS_SNAP_MAX_DIST_M) displayPoint = snap.point;
-  }
-
-  // Heading: prefer the device compass (works standing still); fall back
-  // to GPS-derived heading (only meaningful while moving at real speed)
-  if (_gpsHeading == null && heading != null && speed > 0.3) {
-    _gpsHeading = heading;
-  }
-
-  animateGPSMarkerTo(displayPoint, acc);
-  setGPSAccuracyTier(tier);
-
-  if (_gpsFirstFix) {
-    map.flyTo({ center: displayPoint, zoom: Math.max(map.getZoom(), 18.5), duration: 900 });
-    _gpsFirstFix = false;
-  }
-
-  // 3. Live reroute if navigating from "My Location" and we've drifted off route
-  if (_gpsActiveRouteTo && tier !== 'weak' && Router.isReady()) {
-    maybeRerouteFromGPS(displayPoint, _gpsActiveRouteTo);
-  }
-}
-
-/* Smoothly glide the marker to its new spot instead of teleporting —
-   this alone removes most of the "jumping around" feel of raw GPS. */
-function animateGPSMarkerTo(target, accuracy) {
-  ensureGPSMarker();
-
-  const from = _gpsDisplayed || target;
-  const to   = target;
-  const start = performance.now();
-  cancelAnimationFrame(_gpsAnimFrame);
-
-  function step(now) {
-    const t = Math.min(1, (now - start) / GPS_ANIM_MS);
-    const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // ease-in-out
-    const lng = from[0] + (to[0] - from[0]) * eased;
-    const lat = from[1] + (to[1] - from[1]) * eased;
-    setGPSMarkerPosition([lng, lat], accuracy);
-    if (t < 1) _gpsAnimFrame = requestAnimationFrame(step);
-    else _gpsDisplayed = to;
-  }
-  _gpsAnimFrame = requestAnimationFrame(step);
-}
-
-function ensureGPSMarker() {
-  if (_gpsMarkerEl) return;
-  const wrap = document.createElement('div');
-  wrap.className = 'gps-dot-wrap';
-  wrap.innerHTML = '<div class="gps-heading" id="gpsHeadingArrow"></div><div class="gps-dot"></div>';
-  _gpsMarkerEl = new maplibregl.Marker({ element: wrap, anchor: 'center' })
-    .setLngLat(map.getCenter()).addTo(map);
-
-  if (!map.getSource(_gpsAccuracyCircleId)) {
-    map.addSource(_gpsAccuracyCircleId, {
-      type: 'geojson',
-      data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { radiusM: 0 } }
-    });
-    map.addLayer({
-      id: _gpsAccuracyCircleId, type: 'circle', source: _gpsAccuracyCircleId,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 15, ['/', ['get', 'radiusM'], 4], 20, ['*', ['get', 'radiusM'], 2]],
-        'circle-color': '#4285F4', 'circle-opacity': 0.12,
-        'circle-stroke-color': '#4285F4', 'circle-stroke-width': 1, 'circle-stroke-opacity': 0.3,
-      },
-    });
-  }
-}
-
-function setGPSMarkerPosition([lng, lat], accuracy) {
-  if (!_gpsMarkerEl) return;
-  _gpsMarkerEl.setLngLat([lng, lat]);
-  const src = map.getSource(_gpsAccuracyCircleId);
-  if (src) src.setData({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: { radiusM: accuracy } });
-  const arrow = document.getElementById('gpsHeadingArrow');
-  if (arrow) arrow.style.transform = `rotate(${(_gpsHeading ?? 0) - map.getBearing()}deg)`;
-}
-
-// Visually be honest about uncertainty: a weak fix gets a paler dot and a
-// dashed accuracy ring, instead of the same confident solid blue dot you'd
-// see when we're actually sure where you are.
-function setGPSAccuracyTier(tier) {
-  if (!_gpsMarkerEl) return;
-  const el = _gpsMarkerEl.getElement();
-  el.classList.toggle('gps-tier-weak', tier === 'weak');
-  el.classList.toggle('gps-tier-ok', tier === 'ok');
-  if (map.getLayer(_gpsAccuracyCircleId)) {
-    map.setPaintProperty(_gpsAccuracyCircleId, 'circle-stroke-dasharray', tier === 'weak' ? [2, 2] : undefined);
-  }
-}
-
-function removeGPSMarker() {
-  if (_gpsMarkerEl) { _gpsMarkerEl.remove(); _gpsMarkerEl = null; }
-  _gpsRecent = []; _gpsSmoothed = null; _gpsDisplayed = null; _gpsHeading = null; _gpsLastTier = null;
-}
-
-/* Compass heading — iOS 13+ needs an explicit user-gesture permission
-   prompt; other browsers just fire the event. */
-function requestCompassPermissionIfNeeded() {
-  const DOE = window.DeviceOrientationEvent;
-  if (DOE && typeof DOE.requestPermission === 'function') {
-    DOE.requestPermission().then(state => {
-      if (state === 'granted') window.addEventListener('deviceorientationabsolute', onCompassEvent, true);
-    }).catch(() => {});
-  } else {
-    window.addEventListener('deviceorientationabsolute', onCompassEvent, true);
-    window.addEventListener('deviceorientation', onCompassEvent, true); // fallback for browsers w/o "absolute"
-  }
-}
-
-function onCompassEvent(e) {
-  const heading = e.webkitCompassHeading /* iOS Safari */ ?? (e.absolute && e.alpha != null ? 360 - e.alpha : null);
-  if (heading != null && !isNaN(heading)) _gpsHeading = heading;
-}
-
-/* Recompute the route from wherever the user actually is if they've
-   drifted more than GPS_REROUTE_DRIFT_M off the current route line —
-   this is the "recalculating…" behaviour Maps apps do on foot. */
-let _lastRerouteAt = 0;
-function maybeRerouteFromGPS(currentPoint, toBid) {
-  const now = Date.now();
-  if (now - _lastRerouteAt < 4000) return; // don't spam recompute
-  const toCenter = getBuildingCenter(toBid, currentPoint);
-  if (!toCenter) return;
-  const route = Router.find(currentPoint, toCenter);
-  if (route && route.coords.length > 1) {
-    drawRoute(route.coords);
-    _lastRerouteAt = now;
-  }
+  showToast('📍 ' + (msgs[err.code] || 'GPS error'));
 }
