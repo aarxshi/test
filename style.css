@@ -29,7 +29,8 @@ body {
   font-family: 'Geist', sans-serif;
   background: var(--bg);
   color: var(--text);
-  height: 100vh;
+  height: 100vh;   /* fallback for older browsers without dvh support */
+  height: 100dvh;  /* tracks the *actual* visible viewport as the mobile toolbar shows/hides */
   overflow: hidden;
   display: flex;
   flex-direction: column;
