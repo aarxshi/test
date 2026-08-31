@@ -562,18 +562,20 @@ header {
   #mobileFab {
     display: none;
     position: absolute;
-    bottom: max(28px, env(safe-area-inset-bottom, 28px));
+    bottom: max(40px, calc(env(safe-area-inset-bottom, 0px) + 40px));
     left: 50%;
     transform: translateX(-50%);
     z-index: 70;
+    max-width: calc(100vw - 96px);  /* leave clearance for .zoom-ctrls on the right */
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 100px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.18);
-    padding: 10px 20px; gap: 16px;
+    padding: 8px 14px; gap: 10px;
     align-items: center;
     white-space: nowrap;
   }
+  .fab-divider { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
   /* Pure CSS: whenever the sheet is dismissed, FAB appears — no JS required */
   .layout:has(.sidebar.sheet-hidden) #mobileFab {
     display: flex !important;
@@ -586,4 +588,13 @@ header {
   }
   .fab-btn:hover  { color: var(--accent); background: var(--accent-bg); }
   .fab-btn.accent { color: var(--accent); }
+
+  /* Icon-only below this width — labels take more room than narrow phones
+     have to give once the FAB has 3+ buttons, so this keeps it from ever
+     overrunning the zoom controls, on any device, without a guessed value. */
+  @media (max-width: 420px) {
+    #mobileFab { padding: 8px 12px; gap: 6px; }
+    .fab-btn   { padding: 6px; gap: 0; }
+    .fab-label { display: none; }
+  }
 }
