@@ -174,24 +174,24 @@
     </div>
     <!-- Mobile FAB — visible when sheet is hidden -->
     <div id="mobileFab" style="display:none">
-      <button class="fab-btn accent" onclick="switchTab('buildings')">
+      <button class="fab-btn accent" onclick="switchTab('buildings')" title="Buildings">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-        Buildings
+        <span class="fab-label">Buildings</span>
       </button>
-      <div style="width:1px;height:20px;background:var(--border)"></div>
-      <button class="fab-btn" onclick="switchTab('navigate')">
+      <div class="fab-divider"></div>
+      <button class="fab-btn" onclick="switchTab('navigate')" title="Navigate">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
           <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
         </svg>
-        Navigate
+        <span class="fab-label">Navigate</span>
       </button>
-      <div style="width:1px;height:20px;background:var(--border)"></div>
-      <button class="fab-btn" id="gpsFabBtn" onclick="toggleGPS()">
+      <div class="fab-divider"></div>
+      <button class="fab-btn" id="gpsFabBtn" onclick="toggleGPS()" title="My Location">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
           <circle cx="12" cy="9" r="2.5"/>
         </svg>
-        My Location
+        <span class="fab-label">My Location</span>
       </button>
     </div>
   </div>
