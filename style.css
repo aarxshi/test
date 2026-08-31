@@ -552,11 +552,17 @@ header {
     font-weight: 500;
   }
 
-  /* FAB — hidden by default, CSS shows it whenever sheet-hidden class is active */
+  /* FAB — hidden by default, CSS shows it whenever sheet-hidden class is active.
+     Anchored with position:absolute inside #map (not position:fixed) so it
+     shares the same coordinate space as .zoom-ctrls. A fixed element is
+     positioned against the browser's viewport, which real phones resize
+     as the address bar shows/hides — that's what was pushing this out of
+     sync with the zoom controls; absolute keeps both locked together. */
   #mobileFab {
     display: none;
-    position: fixed;
-    bottom: 28px; left: 50%;
+    position: absolute;
+    bottom: max(28px, env(safe-area-inset-bottom, 28px));
+    left: 50%;
     transform: translateX(-50%);
     z-index: 70;
     background: var(--surface);
@@ -580,4 +586,3 @@ header {
   .fab-btn:hover  { color: var(--accent); background: var(--accent-bg); }
   .fab-btn.accent { color: var(--accent); }
 }
-
