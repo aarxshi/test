@@ -316,9 +316,7 @@ let _gpsMarker     = null;
 let _gpsAccuracy   = null;
 let _gpsCentre     = true;   // fly to position on first fix
 let _gpsStale      = false;
-let _gpsPrevPoint  = null;   // last displayed point, for heading + animation
-let _gpsHeading    = null;   // degrees, movement-derived
-let _gpsMoving     = false;
+let _gpsPrevPoint  = null;   // last displayed point, for smooth animation between fixes
 let _gpsStickyEdge = null;   // { a, b } — path edge we're currently "attached" to
 let _gpsAnimFrame  = null;
 
@@ -359,7 +357,7 @@ function stopGPS() {
   const fab2 = document.getElementById('gpsFabBtn');
   if (fab2) fab2.style.color = '';
   cancelAnimationFrame(_gpsAnimFrame);
-  _gpsPrevPoint = null; _gpsHeading = null; _gpsMoving = false; _gpsStickyEdge = null;
+  _gpsPrevPoint = null; _gpsStickyEdge = null;
   stopGPSNav();
 }
 
@@ -374,20 +372,10 @@ const GPS_SNAP_LIMIT_M = 20;
    GPS jitter right at an intersection makes the dot flip-flop between
    two nearly-equidistant paths every fix. */
 const GPS_EDGE_STICKINESS_M = 4;
-/* Below this displacement between fixes, don't trust it as "movement"
-   for heading purposes — it's just GPS jitter while standing still. */
-const GPS_MOVE_THRESHOLD_M = 2.5;
 /* Marker glide duration between fixes — turns each update into a
    smooth slide instead of a hard jump. */
 const GPS_ANIM_MS = 450;
 
-function bearingBetween([lng1, lat1], [lng2, lat2]) {
-  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
-  const λ1 = lng1 * Math.PI / 180, λ2 = lng2 * Math.PI / 180;
-  const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
-  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-}
 
 /* Project a point onto one specific known edge (rather than searching
    the whole network) — used to check "how close am I to the edge I'm
@@ -450,20 +438,12 @@ function onGPSUpdate(pos) {
     if (snap && snap.distM <= GPS_SNAP_LIMIT_M) displayPoint = snap.point;
   }
 
-  // Movement + heading, derived from displayed-point displacement so
-  // path-snapping noise doesn't masquerade as turning
-  if (_gpsPrevPoint) {
-    const moved = haversineM(_gpsPrevPoint, displayPoint);
-    _gpsMoving = moved > GPS_MOVE_THRESHOLD_M;
-    if (_gpsMoving) _gpsHeading = bearingBetween(_gpsPrevPoint, displayPoint);
-  }
-
-  // Blue dot / arrow marker
+  // Blue dot marker (no heading arrow — see note in onGPSUpdate below)
   if (!_gpsMarker) {
     const dotWrap = document.createElement('div');
     dotWrap.className = 'gps-dot-wrap';
-    dotWrap.innerHTML = '<div class="gps-arrow" id="gpsArrow"></div><div class="gps-dot" id="gpsDot"></div>';
-    _gpsMarker = new maplibregl.Marker({ element: dotWrap, anchor: 'center', rotationAlignment: 'map' })
+    dotWrap.innerHTML = '<div class="gps-dot" id="gpsDot"></div>';
+    _gpsMarker = new maplibregl.Marker({ element: dotWrap, anchor: 'center' })
       .setLngLat(displayPoint).addTo(map);
     _gpsPrevPoint = displayPoint;
   } else {
@@ -471,13 +451,7 @@ function onGPSUpdate(pos) {
     _gpsPrevPoint = displayPoint;
   }
 
-  const wrapEl = _gpsMarker.getElement();
-  wrapEl.classList.toggle('gps-moving', _gpsMoving && !_gpsStale);
   document.getElementById('gpsDot')?.classList.toggle('gps-stale', _gpsStale);
-  const arrowEl = document.getElementById('gpsArrow');
-  if (arrowEl && _gpsHeading != null) {
-    arrowEl.style.transform = `rotate(${_gpsHeading - map.getBearing()}deg)`;
-  }
 
   // Fly to on first fix, then just re-centre if button tapped again
   if (_gpsCentre) {
