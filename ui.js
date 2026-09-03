@@ -339,9 +339,8 @@ function renderList(filter = '') {
     const otherEntries = Object.entries(BUILDINGS).filter(([bid]) => !GATE_ORDER.includes(bid));
 
     for (const [bid, b] of [...gateEntries, ...otherEntries]) {
-      const cleanName = b.name.replace(/\s*\(\d+\)\s*$/, '');
-      fs.add(new Option(cleanName, bid));
-      ts.add(new Option(cleanName, bid));
+      fs.add(new Option(b.name, bid));
+      ts.add(new Option(b.name, bid));
     }
   }
 
