@@ -181,7 +181,6 @@ function resetRoute() {
   clearRouteStates();
   clearMapSelected();
   clearRoute();
-  stopGPSNav();
   showToast('Route cleared');
 }
 
@@ -214,30 +213,34 @@ function findRoute() {
   if (!from || !to) { showToast('⚠ Select both buildings'); return; }
   if (from === to)  { showToast('⚠ Same start and destination'); return; }
 
-  // GPS routing — use live location directly
+  // GPS routing — use live location directly instead of a building
   if (from === 'GPS') {
-    if (!_gpsMarker) { showToast('📍 Enable My Location first'); return; }
+    if (!_gpsMarker) { showToast('Turn on My Location first (top-right button)'); return; }
     const lngLat = _gpsMarker.getLngLat();
     const toCenter = getBuildingCenter(to);
     if (!toCenter) { showToast('No route found'); return; }
     const route = Router.find([lngLat.lng, lngLat.lat], toCenter);
     if (!route) { showToast('No path found'); return; }
+
     startGPSNav(to, route.coords);
     drawRoute(route.coords);
     setRouteStates(null, to);
+
     const metres = Math.round(route.distanceM);
     const mins   = Math.max(1, Math.round(metres / 80));
     document.getElementById('rDist').textContent  = metres;
     document.getElementById('rTime').textContent  = '~' + mins;
     document.getElementById('rStops').textContent = '—';
     document.getElementById('rSteps').innerHTML =
-      `<div class="step"><div class="sbubble" style="background:#16a34a18;border:1.5px solid #16a34a;color:#16a34a">📍</div><div class="sbody"><div class="sname">Your location</div><div class="stype">GPS</div></div></div>` +
+      `<div class="step"><div class="sbubble" style="background:#16a34a18;border:1.5px solid #16a34a;color:#16a34a">●</div><div class="sbody"><div class="sname">My current location</div><div class="stype">Live</div></div></div>` +
       `<div class="step"><div class="sbubble" style="background:#dc262618;border:1.5px solid #dc2626;color:#dc2626">→</div><div class="sbody"><div class="sname">${BUILDINGS[to]?.name || to}</div><div class="stype">${BUILDINGS[to]?.type || ''}</div></div></div>`;
-    document.getElementById('routeCard').style.display = '';
-    if (window.innerWidth < 768) setSheet('half');
-    map.fitBounds([[Math.min(...route.coords.map(c=>c[0])), Math.min(...route.coords.map(c=>c[1]))],
-                   [Math.max(...route.coords.map(c=>c[0])), Math.max(...route.coords.map(c=>c[1]))]],
-      { padding: { top:80, bottom: window.innerWidth < 768 ? 320 : 80, left:80, right:80 }, duration:700 });
+    document.getElementById('routeCard').classList.add('visible');
+    if (window.innerWidth < 768) { closePeekCard(); setSheet('half'); }
+    map.fitBounds(
+      [[Math.min(...route.coords.map(c => c[0])), Math.min(...route.coords.map(c => c[1]))],
+       [Math.max(...route.coords.map(c => c[0])), Math.max(...route.coords.map(c => c[1]))]],
+      { padding: { top: 80, bottom: window.innerWidth < 768 ? 320 : 80, left: 80, right: 80 }, duration: 700 }
+    );
     return;
   }
 
@@ -307,7 +310,7 @@ function findRoute() {
 /* ════════════════════════════════════════════════════════
    BUILDING LIST
 ════════════════════════════════════════════════════════ */
-const CAT_ORDER  = ['Academic', 'Amenities', 'Hostels', 'Gates', 'Parking'];
+const CAT_ORDER  = ['Gates', 'Academic', 'Amenities', 'Hostels', 'Parking'];
 const CAT_COLORS = { Academic: '#0ea5e9', Amenities: '#8b5cf6', Hostels: '#dc2626', Gates: '#ca8a04', Parking: '#78716c' };
 
 function renderList(filter = '') {
@@ -325,10 +328,10 @@ function renderList(filter = '') {
   if (!filter) {
     const fs = document.getElementById('fromSel');
     const ts = document.getElementById('toSel');
-    // GPS option in From dropdown only
     fs.innerHTML = '<option value="">Choose building…</option>';
     ts.innerHTML = '<option value="">Choose building…</option>';
-    fs.add(new Option('📍 My current location', 'GPS'));
+    // GPS option in From dropdown only — can't navigate TO your own live position
+    fs.add(new Option('My current location', 'GPS'));
     for (const [bid, b] of Object.entries(BUILDINGS)) {
       const cleanName = b.name.replace(/\s*\(\d+\)\s*$/, '');
       fs.add(new Option(cleanName, bid));
@@ -339,7 +342,6 @@ function renderList(filter = '') {
   let html = '';
   for (const cat of CAT_ORDER) {
     if (!grouped[cat]) continue;
-    if (cat === 'Gates') continue;  // hidden from list, still in nav dropdowns
     html += `<div class="cat-label">${cat}</div>`;
     grouped[cat].sort((a, b) => (isNaN(a.bid) ? 9999 : +a.bid) - (isNaN(b.bid) ? 9999 : +b.bid));
     for (const b of grouped[cat]) {
