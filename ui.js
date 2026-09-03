@@ -310,7 +310,7 @@ function findRoute() {
 /* ════════════════════════════════════════════════════════
    BUILDING LIST
 ════════════════════════════════════════════════════════ */
-const CAT_ORDER  = ['Gates', 'Academic', 'Amenities', 'Hostels', 'Parking'];
+const CAT_ORDER  = ['Academic', 'Amenities', 'Hostels', 'Gates', 'Parking'];
 const CAT_COLORS = { Academic: '#0ea5e9', Amenities: '#8b5cf6', Hostels: '#dc2626', Gates: '#ca8a04', Parking: '#78716c' };
 
 function renderList(filter = '') {
@@ -332,7 +332,13 @@ function renderList(filter = '') {
     ts.innerHTML = '<option value="">Choose building…</option>';
     // GPS option in From dropdown only — can't navigate TO your own live position
     fs.add(new Option('My current location', 'GPS'));
-    for (const [bid, b] of Object.entries(BUILDINGS)) {
+
+    // Gates first in both dropdowns for quick access, then everything else
+    const GATE_ORDER = ['GATE1', 'GATE2'];
+    const gateEntries  = GATE_ORDER.filter(bid => BUILDINGS[bid]).map(bid => [bid, BUILDINGS[bid]]);
+    const otherEntries = Object.entries(BUILDINGS).filter(([bid]) => !GATE_ORDER.includes(bid));
+
+    for (const [bid, b] of [...gateEntries, ...otherEntries]) {
       const cleanName = b.name.replace(/\s*\(\d+\)\s*$/, '');
       fs.add(new Option(cleanName, bid));
       ts.add(new Option(cleanName, bid));
@@ -342,6 +348,7 @@ function renderList(filter = '') {
   let html = '';
   for (const cat of CAT_ORDER) {
     if (!grouped[cat]) continue;
+    if (cat === 'Gates') continue;  // hidden from Buildings tab, still available in Navigate dropdowns
     html += `<div class="cat-label">${cat}</div>`;
     grouped[cat].sort((a, b) => (isNaN(a.bid) ? 9999 : +a.bid) - (isNaN(b.bid) ? 9999 : +b.bid));
     for (const b of grouped[cat]) {
