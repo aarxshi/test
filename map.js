@@ -311,11 +311,16 @@ function getBuildingCenter(bid, origin) {
 }
 
 /* ── GPS / LOCATION ─────────────────────────────────── */
-let _gpsWatchId   = null;
-let _gpsMarker    = null;
-let _gpsAccuracy  = null;
-let _gpsCentre    = true;   // fly to position on first fix
-let _gpsStale     = false;
+let _gpsWatchId    = null;
+let _gpsMarker     = null;
+let _gpsAccuracy   = null;
+let _gpsCentre     = true;   // fly to position on first fix
+let _gpsStale      = false;
+let _gpsPrevPoint  = null;   // last displayed point, for heading + animation
+let _gpsHeading    = null;   // degrees, movement-derived
+let _gpsMoving     = false;
+let _gpsStickyEdge = null;   // { a, b } — path edge we're currently "attached" to
+let _gpsAnimFrame  = null;
 
 function toggleGPS() {
   if (_gpsWatchId !== null) {
@@ -353,6 +358,8 @@ function stopGPS() {
   document.getElementById('gpsBtn').classList.remove('gps-active');
   const fab2 = document.getElementById('gpsFabBtn');
   if (fab2) fab2.style.color = '';
+  cancelAnimationFrame(_gpsAnimFrame);
+  _gpsPrevPoint = null; _gpsHeading = null; _gpsMoving = false; _gpsStickyEdge = null;
   stopGPSNav();
 }
 
@@ -362,6 +369,74 @@ const GPS_ACCURACY_LIMIT_M = 30;
 /* A fix has to snap within this distance of a path to count as
    "on" it, rather than genuinely off-network (inside a building etc). */
 const GPS_SNAP_LIMIT_M = 20;
+/* A different path edge has to be at least this much closer than the
+   one we're already attached to before we switch — otherwise ordinary
+   GPS jitter right at an intersection makes the dot flip-flop between
+   two nearly-equidistant paths every fix. */
+const GPS_EDGE_STICKINESS_M = 4;
+/* Below this displacement between fixes, don't trust it as "movement"
+   for heading purposes — it's just GPS jitter while standing still. */
+const GPS_MOVE_THRESHOLD_M = 2.5;
+/* Marker glide duration between fixes — turns each update into a
+   smooth slide instead of a hard jump. */
+const GPS_ANIM_MS = 450;
+
+function bearingBetween([lng1, lat1], [lng2, lat2]) {
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+  const λ1 = lng1 * Math.PI / 180, λ2 = lng2 * Math.PI / 180;
+  const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+/* Project a point onto one specific known edge (rather than searching
+   the whole network) — used to check "how close am I to the edge I'm
+   already attached to" for stickiness. */
+function projectOntoEdge(point, a, b) {
+  const adj = Router._adjList();
+  const entry = (adj[a] || []).find(e => String(e.to) === String(b));
+  if (!entry) return null;
+  const segCoords = entry.segCoords;
+  let best = null;
+  for (let i = 0; i < segCoords.length - 1; i++) {
+    const proj = projectPointOnSegmentM(point, segCoords[i], segCoords[i + 1]);
+    const d = haversineM(point, proj);
+    if (!best || d < best.distM) best = { point: proj, distM: d };
+  }
+  return best;
+}
+
+/* Snap to the network, but with hysteresis: stay on the edge we're
+   already tracking unless a different one is clearly closer. This is
+   what stops the dot from jumping sideways at every intersection. */
+function snapToNetworkSticky(point) {
+  const globalBest = Router.snapToNetwork(point);
+  if (!globalBest) return null;
+
+  if (_gpsStickyEdge) {
+    const stickyProj = projectOntoEdge(point, _gpsStickyEdge.a, _gpsStickyEdge.b);
+    if (stickyProj && stickyProj.distM <= globalBest.distM + GPS_EDGE_STICKINESS_M) {
+      return { point: stickyProj.point, distM: stickyProj.distM, edge: _gpsStickyEdge };
+    }
+  }
+  _gpsStickyEdge = globalBest.edge;
+  return globalBest;
+}
+
+/* Glide the marker to its new position instead of teleporting it —
+   softens both ordinary GPS jitter and any residual edge-switch jump. */
+function animateMarkerTo(marker, from, to, ms) {
+  cancelAnimationFrame(_gpsAnimFrame);
+  if (!from) { marker.setLngLat(to); return; }
+  const start = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - start) / ms);
+    const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    marker.setLngLat([from[0] + (to[0] - from[0]) * eased, from[1] + (to[1] - from[1]) * eased]);
+    if (t < 1) _gpsAnimFrame = requestAnimationFrame(step);
+  }
+  _gpsAnimFrame = requestAnimationFrame(step);
+}
 
 function onGPSUpdate(pos) {
   const { longitude: lng, latitude: lat, accuracy } = pos.coords;
@@ -371,24 +446,38 @@ function onGPSUpdate(pos) {
   // enough to a path — otherwise show the raw fix as-is.
   let displayPoint = [lng, lat];
   if (!_gpsStale && Router.isReady()) {
-    const snap = Router.snapToNetwork([lng, lat]);
+    const snap = snapToNetworkSticky([lng, lat]);
     if (snap && snap.distM <= GPS_SNAP_LIMIT_M) displayPoint = snap.point;
   }
 
-  // Blue dot
+  // Movement + heading, derived from displayed-point displacement so
+  // path-snapping noise doesn't masquerade as turning
+  if (_gpsPrevPoint) {
+    const moved = haversineM(_gpsPrevPoint, displayPoint);
+    _gpsMoving = moved > GPS_MOVE_THRESHOLD_M;
+    if (_gpsMoving) _gpsHeading = bearingBetween(_gpsPrevPoint, displayPoint);
+  }
+
+  // Blue dot / arrow marker
   if (!_gpsMarker) {
     const dotWrap = document.createElement('div');
     dotWrap.className = 'gps-dot-wrap';
-    const dot = document.createElement('div');
-    dot.className = 'gps-dot';
-    dot.id = 'gpsDot';
-    dotWrap.appendChild(dot);
-    _gpsMarker = new maplibregl.Marker({ element: dotWrap, anchor: 'center' })
+    dotWrap.innerHTML = '<div class="gps-arrow" id="gpsArrow"></div><div class="gps-dot" id="gpsDot"></div>';
+    _gpsMarker = new maplibregl.Marker({ element: dotWrap, anchor: 'center', rotationAlignment: 'map' })
       .setLngLat(displayPoint).addTo(map);
+    _gpsPrevPoint = displayPoint;
   } else {
-    _gpsMarker.setLngLat(displayPoint);
+    animateMarkerTo(_gpsMarker, _gpsPrevPoint, displayPoint, GPS_ANIM_MS);
+    _gpsPrevPoint = displayPoint;
   }
+
+  const wrapEl = _gpsMarker.getElement();
+  wrapEl.classList.toggle('gps-moving', _gpsMoving && !_gpsStale);
   document.getElementById('gpsDot')?.classList.toggle('gps-stale', _gpsStale);
+  const arrowEl = document.getElementById('gpsArrow');
+  if (arrowEl && _gpsHeading != null) {
+    arrowEl.style.transform = `rotate(${_gpsHeading - map.getBearing()}deg)`;
+  }
 
   // Fly to on first fix, then just re-centre if button tapped again
   if (_gpsCentre) {
@@ -501,8 +590,13 @@ function updateGPSNavProgress(point) {
     if (tEl) tEl.textContent = '~' + mins;
 
     if (metres <= GPS_ARRIVED_LIMIT_M) {
-      showToast('📍 You’ve arrived');
+      const destBid = _gpsDestBid;
       stopGPSNav();
+      clearRoute();
+      clearRouteStates();
+      document.getElementById('routeCard')?.classList.remove('visible');
+      if (destBid) selectBuilding(destBid);
+      showToast('You’ve arrived at ' + (BUILDINGS[destBid]?.name || 'your destination'));
     }
   } else {
     _gpsDeviationCount++;
@@ -528,8 +622,6 @@ function rerouteGPSNav(point) {
   const tEl = document.getElementById('rTime');
   if (dEl) dEl.textContent = metres;
   if (tEl) tEl.textContent = '~' + mins;
-
-  showToast('↻ Route updated');
 }
 
 function onGPSError(err) {
