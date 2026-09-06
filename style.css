@@ -188,6 +188,10 @@ header {
   display: flex; align-items: center; justify-content: center;
   position: relative; flex-shrink: 0; overflow: hidden;
 }
+/* No-photo state (e.g. gates) — collapse to a thin strip that still
+   holds the absolutely-positioned close button, instead of showing the
+   full placeholder box for something that was never going to get a photo */
+.card-img-wrap.no-photo { aspect-ratio: unset; height: 38px; background: transparent; }
 .card-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: none; }
 .card-img-wrap img.loaded { display: block; }
 
