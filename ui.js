@@ -117,11 +117,19 @@ function selectBuilding(bid) {
   document.getElementById('cType').textContent = b.type;
   document.getElementById('cDepts').innerHTML  = b.depts.map(d => `<div class="dept-item">${d}</div>`).join('');
 
+  const imgWrap = document.querySelector('.card-img-wrap');
   const imgEl = document.getElementById('cardImg');
   const imgPh = document.getElementById('imgPh');
   if (b.img) {
+    imgWrap.classList.remove('no-photo');
     imgEl.src = b.img; imgEl.classList.add('loaded'); imgPh.style.display = 'none';
+  } else if (b.type === 'Gates') {
+    // Gates don't need a photo — collapse to a thin strip (still holds
+    // the close button) instead of promising a photo that's never coming
+    imgWrap.classList.add('no-photo');
+    imgEl.classList.remove('loaded'); imgEl.src = ''; imgPh.style.display = 'none';
   } else {
+    imgWrap.classList.remove('no-photo');
     imgEl.classList.remove('loaded'); imgEl.src = ''; imgPh.style.display = 'flex';
   }
 
