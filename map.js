@@ -466,9 +466,11 @@ function onGPSUpdate(pos) {
   const fab3 = document.getElementById('gpsFabBtn');
   if (fab3) { fab3.style.color = '#2563eb'; }
 
-  // Skip nav-progress work on a bad fix — wait for a better one
-  if (_gpsStale) return;
-
+  // Nav-progress tracking runs on every fix, not just "confident" ones —
+  // updateGPSNavProgress() already tolerates up to 18m of deviation and
+  // waits for 3 consecutive bad fixes before rerouting, so gating it
+  // behind the stricter 30m snap-accuracy threshold too just meant the
+  // route line silently stopped updating on ordinary weaker fixes.
   updateGPSNavProgress(displayPoint);
 }
 
