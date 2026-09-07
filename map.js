@@ -430,12 +430,21 @@ function onGPSUpdate(pos) {
   const { longitude: lng, latitude: lat, accuracy } = pos.coords;
   _gpsStale = accuracy > GPS_ACCURACY_LIMIT_M;
 
-  // Snap onto the path network when the fix is trustworthy and close
-  // enough to a path — otherwise show the raw fix as-is.
+  // Two separate snaps, deliberately not the same value:
+  // - displayPoint uses the STICKY snap, which intentionally lags a
+  //   little (holds the previous edge) to stop the dot jittering
+  //   sideways at intersections. Good for the visual marker.
+  // - progressPoint uses the PLAIN snap, with no stickiness, so route
+  //   progress is never held back by the dot's smoothing — otherwise
+  //   the sticky lag reads as "the line isn't advancing as I walk."
   let displayPoint = [lng, lat];
+  let progressPoint = [lng, lat];
   if (!_gpsStale && Router.isReady()) {
     const snap = snapToNetworkSticky([lng, lat]);
     if (snap && snap.distM <= GPS_SNAP_LIMIT_M) displayPoint = snap.point;
+
+    const plainSnap = Router.snapToNetwork([lng, lat]);
+    if (plainSnap && plainSnap.distM <= GPS_SNAP_LIMIT_M) progressPoint = plainSnap.point;
   }
 
   // Blue dot marker (no heading arrow — see note in onGPSUpdate below)
@@ -471,7 +480,7 @@ function onGPSUpdate(pos) {
   // waits for 3 consecutive bad fixes before rerouting, so gating it
   // behind the stricter 30m snap-accuracy threshold too just meant the
   // route line silently stopped updating on ordinary weaker fixes.
-  updateGPSNavProgress(displayPoint);
+  updateGPSNavProgress(progressPoint);
 }
 
 /* ── GPS NAV — progress tracking + confirmed reroute ───────
