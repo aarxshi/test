@@ -721,12 +721,33 @@ header {
    (see renderRoomPanel), so an unfilled room shows no table at all.
    Deliberately quieter than the dept pill / reassignment control below,
    which stays the primary action in this tab. */
+.room-info-hint { font-size: 11px; color: var(--text-faint); margin-bottom: 6px; }
 .room-info-table { border: 1px solid var(--border); border-radius: 9px; margin-bottom: 18px; overflow: hidden; }
 .room-info-row { display: flex; padding: 7px 12px; font-size: 12.5px; border-bottom: 1px solid var(--border); }
 .room-info-row:last-child { border-bottom: none; }
 .room-info-row:nth-child(odd) { background: var(--surface2); }
-.room-info-label { width: 90px; flex-shrink: 0; color: var(--text-muted); }
-.room-info-value { color: var(--text); font-weight: 500; overflow-wrap: anywhere; }
+.room-info-label { width: 90px; flex-shrink: 0; color: var(--text-muted); padding-top: 4px; }
+.room-info-value { color: var(--text); font-weight: 500; overflow-wrap: anywhere; padding-top: 4px; }
+.room-info-input { flex: 1; min-width: 0; border: 1px dashed var(--border); background: var(--surface); border-radius: 6px;
+  padding: 3px 6px; font-size: 12.5px; font-weight: 500; font-family: inherit; color: var(--text); }
+.room-info-input:hover { border-color: var(--text-faint); border-style: solid; }
+.room-info-input:focus { outline: none; border-color: var(--accent); border-style: solid; background: var(--surface); }
+.room-info-input::placeholder { color: var(--text-faint); font-weight: 400; }
+/* Small pencil hint so it reads as an editable field, not a static value */
+.room-info-row:has(.room-info-input) .room-info-label::after {
+  content: '✎'; margin-left: 5px; font-size: 10px; color: var(--text-faint); vertical-align: middle;
+}
+
+/* "Edit details"/"Cancel" — the Room No./Used For/etc. table displays
+   read-only by default; these two toggle it into and out of edit mode. */
+.btn-edit-details { width: 100%; padding: 9px 0; border-radius: 9px; margin-bottom: 18px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font-family: 'Geist', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; transition: border-color .12s, background .12s; }
+.btn-edit-details:hover { border-color: var(--accent); background: var(--surface2); }
+.btn-cancel-edit { width: 100%; padding: 9px 0; border-radius: 9px; margin-bottom: 18px;
+  border: none; background: transparent; color: var(--text-muted);
+  font-family: 'Geist', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; }
+.btn-cancel-edit:hover { color: var(--text); text-decoration: underline; }
 
 .dept-pill { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 999px;
   background: var(--surface2); border: 1px solid var(--border); font-size: 13px; font-weight: 500; margin-bottom: 18px; }
@@ -741,7 +762,10 @@ header {
 
 .history-item { padding: 11px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .history-item:last-child { border-bottom: none; }
-.history-change { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; font-weight: 500; }
+.history-change { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 3px; font-weight: 500; }
+.history-change svg { flex-shrink: 0; color: var(--text-faint); }
+.history-from { color: var(--text-faint); text-decoration: line-through; text-decoration-color: var(--text-faint); }
+.history-to { color: var(--text); font-weight: 600; }
 .history-time { font-size: 11.5px; color: var(--text-faint); }
 .history-empty { color: var(--text-faint); font-size: 13px; text-align: center; padding: 30px 0; }
 

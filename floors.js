@@ -21,18 +21,27 @@ const FloorUI = (function () {
   let currentFloor = null; // the floor object within building.floors
   let selectedRoomId = null;
   let roomSearch = '';
+  let editingDetails = false; // true while the Room No./Used For/etc. fields are open for editing
 
   const HISTORY_KEY = 'campusnav-floor-history';
+
+  // Room ids are only unique WITHIN a floor (Building 4 reuses id '6' and
+  // '7' on both Ground and 1st Floor for unrelated rooms), so history must
+  // be keyed by building+floor+room, not the raw room id — otherwise two
+  // different rooms' reassignment logs collide under the same key and
+  // render merged together, looking like one jumbled entry.
+  function historyKey(roomId) { return `${buildingId}::${currentFloor.floor}::${roomId}`; }
 
   function loadAllHistory() {
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '{}'); }
     catch (_) { return {}; }
   }
-  function loadHistory(roomId) { return loadAllHistory()[roomId] || []; }
+  function loadHistory(roomId) { return loadAllHistory()[historyKey(roomId)] || []; }
   function pushHistory(roomId, entry) {
     const all = loadAllHistory();
-    if (!all[roomId]) all[roomId] = [];
-    all[roomId].unshift(entry);
+    const key = historyKey(roomId);
+    if (!all[key]) all[key] = [];
+    all[key].unshift(entry);
     localStorage.setItem(HISTORY_KEY, JSON.stringify(all));
   }
 
@@ -55,6 +64,7 @@ const FloorUI = (function () {
     roomSearch = '';
     hideFloorPlan();
     switchTab('floors'); // triggers FloorUI.onTabShown() -> renders the floor list
+    try { setMapSelected(bid); } catch (_) {}
   }
 
   function closeFloorPlan() {
@@ -105,6 +115,7 @@ const FloorUI = (function () {
     currentFloor = null;
     selectedRoomId = null;
     renderSidebar();
+    try { setMapSelected(bid); } catch (_) {}
   }
 
   /* ── SIDEBAR: floor list for the open building ────────────── */
@@ -168,9 +179,12 @@ const FloorUI = (function () {
   // with no number set).
   function roomSortKey(r) { return r.roomNumber || r.name; }
   function sortRooms(list) {
-    return list.slice().sort((a, b) =>
-      roomSortKey(a).localeCompare(roomSortKey(b), undefined, { numeric: true, sensitivity: 'base' })
-    );
+    return list.slice().sort((a, b) => {
+      // Non-assignable rooms (RestRoom, etc.) always sink to the bottom,
+      // regardless of what their name happens to alphabetize as.
+      if (a.assignable !== b.assignable) return a.assignable ? -1 : 1;
+      return roomSortKey(a).localeCompare(roomSortKey(b), undefined, { numeric: true, sensitivity: 'base' });
+    });
   }
 
   function roomRowHTML(r, colors) {
@@ -243,6 +257,7 @@ const FloorUI = (function () {
     selectedRoomId = null;
     hideFloorPlan();
     renderSidebar();
+    try { clearMapSelected(); } catch (_) {}
   }
 
   function backToList() {
@@ -370,12 +385,14 @@ const FloorUI = (function () {
   /* ── ROOM SELECTION + REASSIGNMENT PANEL (sidebar) ────────── */
   function selectRoom(roomId) {
     selectedRoomId = roomId;
+    editingDetails = false;
     renderRoomPolygons();
     renderRoomPanel('details');
   }
 
   function selectInfra(roomId) {
     selectedRoomId = roomId;
+    editingDetails = false;
     renderRoomPolygons();
     const r = currentFloor.rooms.find(x => x.id === roomId);
     const b = BUILDINGS[buildingId];
@@ -399,8 +416,14 @@ const FloorUI = (function () {
 
   function deselectRoom() {
     selectedRoomId = null;
+    editingDetails = false;
     renderRoomPolygons();
     renderRoomList();
+  }
+
+  function toggleDetailsEdit(state) {
+    editingDetails = state;
+    renderRoomPanel('details');
   }
 
   function renderRoomPanel(tab) {
@@ -410,37 +433,63 @@ const FloorUI = (function () {
     const colors = building.deptColors;
     const deptOptions = building.depts.map(d => `<option value="${d}" ${d === r.department ? 'selected' : ''}>${d}</option>`).join('');
 
-    // Optional info rows — only shown when the room actually has a value for
-    // them, so a plain room with nothing filled in shows no table at all.
-    const infoRows = [
-      ['Floor', currentFloor.label],
-      ['Room No.', r.roomNumber],
-      ['New Room No.', r.newRoomNumber],
-      ['Used For', r.usedFor],
-      ['Remarks', r.remarks],
-    ].filter(([, v]) => v);
-    const infoTableHTML = infoRows.length === 0 ? '' : `
-      <div class="room-info-table">
-        ${infoRows.map(([label, value]) => `
-          <div class="room-info-row"><div class="room-info-label">${label}</div><div class="room-info-value">${value}</div></div>
-        `).join('')}
-      </div>`;
+    // Floor stays read-only (moving a room between floors isn't a thing
+    // this form does); the rest is editable free text, but only once the
+    // person taps "Edit details" — by default the fields just display.
+    const esc = v => String(v == null ? '' : v).replace(/"/g, '&quot;');
+    const editableFields = [
+      ['roomNumber', 'Room No.', r.roomNumber],
+      ['newRoomNumber', 'New Room No.', r.newRoomNumber],
+      ['usedFor', 'Used For', r.usedFor],
+      ['remarks', 'Remarks', r.remarks],
+    ];
+
+    let infoFormHTML;
+    if (editingDetails) {
+      infoFormHTML = `
+        <div class="room-info-hint">Tap any field below to retype it</div>
+        <div class="room-info-table">
+          <div class="room-info-row"><div class="room-info-label">Floor</div><div class="room-info-value">${currentFloor.label}</div></div>
+          ${editableFields.map(([key, label, value]) => `
+            <div class="room-info-row"><div class="room-info-label">${label}</div>
+              <input class="room-info-input" id="floorField_${key}" value="${esc(value)}" placeholder="—" />
+            </div>
+          `).join('')}
+        </div>
+        <button class="btn-cancel-edit" onclick="FloorUI._toggleDetailsEdit(false)">Cancel</button>`;
+    } else {
+      // Only show rows that actually have a value, so an unfilled room
+      // doesn't display a table full of dashes.
+      const filledFields = editableFields.filter(([, , value]) => value);
+      infoFormHTML = `
+        <div class="room-info-table">
+          <div class="room-info-row"><div class="room-info-label">Floor</div><div class="room-info-value">${currentFloor.label}</div></div>
+          ${filledFields.map(([key, label, value]) => `
+            <div class="room-info-row"><div class="room-info-label">${label}</div><div class="room-info-value">${esc(value)}</div></div>
+          `).join('')}
+        </div>
+        <button class="btn-edit-details" onclick="FloorUI._toggleDetailsEdit(true)">✎ Edit details</button>`;
+    }
 
     const detailsHTML = `
-      ${infoTableHTML}
+      ${infoFormHTML}
       <div class="dept-pill"><div class="dept-pill-dot" style="background:${colors[r.department] || '#999'}"></div>${r.department}</div>
       <div class="field-label">Reassign to</div>
       <select class="dept-select" id="floorReassignSelect">
         <option value="Unassigned" ${r.department === 'Unassigned' ? 'selected' : ''}>Unassigned</option>
         ${deptOptions}
       </select>
-      <button class="btn-reassign" onclick="FloorUI._doReassign('${r.id}')">Save reassignment</button>`;
+      <button class="btn-reassign" onclick="FloorUI._doReassign('${r.id}')">${editingDetails ? 'Save changes' : 'Save reassignment'}</button>`;
 
     const hist = loadHistory(r.id);
     const historyHTML = hist.length === 0
       ? `<div class="history-empty">No reassignment history yet</div>`
-      : hist.map(h => `<div class="history-item">
-          <div class="history-change">${h.from} → ${h.to}</div>
+      : hist.slice().reverse().map(h => `<div class="history-item">
+          <div class="history-change">
+            <span class="history-from">${h.from}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            <span class="history-to">${h.to}</span>
+          </div>
           <div class="history-time">${new Date(h.at).toLocaleString()}</div>
         </div>`).join('');
 
@@ -468,14 +517,29 @@ const FloorUI = (function () {
   function doReassign(roomId) {
     const r = currentFloor.rooms.find(x => x.id === roomId);
     const newDept = el('floorReassignSelect').value;
-    if (newDept === r.department) { showToast('No change made'); return; }
 
-    pushHistory(roomId, { from: r.department, to: newDept, at: Date.now() });
+    const fieldIds = ['roomNumber', 'newRoomNumber', 'usedFor', 'remarks'];
+    const fieldChanged = fieldIds.some(key => {
+      const input = el(`floorField_${key}`);
+      return input && input.value !== (r[key] || '');
+    });
+    const deptChanged = newDept !== r.department;
+
+    if (!deptChanged && !fieldChanged) { showToast('No change made'); return; }
+
+    // Department changes go in the history log (that's what it's for);
+    // plain field edits just save silently, same as the dept used to.
+    if (deptChanged) pushHistory(roomId, { from: r.department, to: newDept, at: Date.now() });
     r.department = newDept;
+    fieldIds.forEach(key => {
+      const input = el(`floorField_${key}`);
+      if (input) r[key] = input.value.trim() || null;
+    });
 
+    editingDetails = false; // saving always drops back to the read-only display
     renderRoomPolygons();
     renderRoomPanel('details');
-    showToast(`${r.name} reassigned to ${newDept}`);
+    showToast(deptChanged ? `${r.name} reassigned to ${newDept}` : `${r.name} updated`);
   }
 
   return {
@@ -492,5 +556,6 @@ const FloorUI = (function () {
     _deselectRoom: deselectRoom,
     _renderRoomPanel: renderRoomPanel,
     _doReassign: doReassign,
+    _toggleDetailsEdit: toggleDetailsEdit,
   };
 })();
