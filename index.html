@@ -39,11 +39,11 @@
            id="searchInput" oninput="filterList(this.value); if(!this.value) clearSearchHighlights()" />
   </div>
 
-  <button class="btn-dir" onclick="switchTab('navigate')">
+  <button class="btn-dir" onclick="switchTab('floors')">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-      <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
+      <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
     </svg>
-    Directions
+    Floors
   </button>
 </header>
 
@@ -70,7 +70,7 @@
 
     <div class="tabs">
       <div class="tab active" id="tab-buildings" onclick="switchTab('buildings')">Buildings</div>
-      <div class="tab"        id="tab-navigate"  onclick="switchTab('navigate')">Navigate</div>
+      <div class="tab"        id="tab-floors"     onclick="switchTab('floors')">Floors</div>
     </div>
 
     <!-- Buildings pane -->
@@ -96,9 +96,8 @@
           <div class="card-name"     id="cName"></div>
           <div class="card-type-tag" id="cType"></div>
           <div class="dept-list"     id="cDepts"></div>
-          <div class="card-btns">
-            <button class="btn-sm btn-from" onclick="setFrom()">↑ From here</button>
-            <button class="btn-sm btn-to"   onclick="setTo()">↓ To here</button>
+          <div class="card-btns" id="viewFloorsWrap" style="display:none">
+            <button class="btn-sm btn-view-floors" style="width:100%" onclick="FloorUI.openFromCard(selectedBid)">⊞ View Floors</button>
           </div>
         </div>
       </div>
@@ -145,6 +144,12 @@
       </div>
     </div>
 
+    <!-- Floors pane — building/floor list, then room details + reassignment.
+         Fully managed by FloorUI (floors.js); this div is just the mount point. -->
+    <div class="pane" id="pane-floors">
+      <div id="floorsPaneContent"></div>
+    </div>
+
   </div><!-- /sidebar -->
 
   <!-- MAP -->
@@ -159,19 +164,20 @@
         </svg>
       </button>
     </div>
-    <div class="map-badge map-legend" id="mapLegend">
-      <div class="leg-label" onclick="toggleLegend()">Legend <span id="legArrow">▾</span></div>
-      <div id="legBody">
-        <div class="leg-item"><div class="leg-swatch" style="background:rgba(22,163,74,.55);border:1.5px solid #16a34a"></div>Start</div>
-        <div class="leg-item"><div class="leg-swatch" style="background:rgba(14,165,233,.45);border:1.5px solid #0ea5e9"></div>Selected</div>
-        <div class="leg-item"><div class="leg-swatch" style="background:rgba(245,158,11,.55);border:1.5px solid #d97706"></div>Search match</div>
-        <div class="leg-item"><div class="leg-swatch" style="background:rgba(220,38,38,.55);border:1.5px solid #dc2626"></div>Destination</div>
-        <div class="leg-item">
-          <div style="width:18px;height:4px;background:#0ea5e9;border-radius:2px"></div>
-          &nbsp;Route
-        </div>
+
+    <!-- Floor plan — sits over the map canvas only, sidebar stays visible.
+         Fully managed by FloorUI. -->
+    <div class="floor-plan-area" id="floorPlanArea">
+      <div class="floor-plan-header">
+        <div class="floor-plan-crumb" id="floorPlanCrumb"></div>
+        <button class="floor-plan-back" onclick="FloorUI.closeFloorPlan()" title="Back to map">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <span class="fp-back-label">Back to map</span>
+        </button>
       </div>
+      <div class="plan-pane" id="floorPlanPane"></div>
     </div>
+
     <!-- Mobile FAB — visible when sheet is hidden -->
     <div id="mobileFab" style="display:none">
       <button class="fab-btn accent" onclick="switchTab('buildings')" title="Buildings">
@@ -179,11 +185,9 @@
         <span class="fab-label">Buildings</span>
       </button>
       <div class="fab-divider"></div>
-      <button class="fab-btn" onclick="switchTab('navigate')" title="Navigate">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-          <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
-        </svg>
-        <span class="fab-label">Navigate</span>
+      <button class="fab-btn" onclick="switchTab('floors')" title="Floors">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        <span class="fab-label">Floors</span>
       </button>
       <div class="fab-divider"></div>
       <button class="fab-btn" id="gpsFabBtn" onclick="toggleGPS()" title="My Location">
@@ -207,6 +211,8 @@
 <script src="router.js"></script>     <!-- path network router -->
 <script src="map.js"></script>        <!-- map init, feature states, dijkstra -->
 <script src="ui.js"></script>         <!-- sidebar, info card, nav pane, toast -->
+<script src="floors-data.js"></script> <!-- floor plan data, keyed by building id -->
+<script src="floors.js"></script>      <!-- floor plan UI, namespaced as FloorUI -->
 
 </body>
 </html>

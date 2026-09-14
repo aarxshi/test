@@ -24,6 +24,7 @@ function switchTab(name) {
   document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   document.getElementById('pane-' + name).classList.add('active');
+  if (name === 'floors' && typeof FloorUI !== 'undefined') FloorUI.onTabShown();
   if (window.innerWidth >= 768 && !sidebarOpen) toggleSidebar();
   if (window.innerWidth < 768 && sheetState === 'hidden') setSheet('half');
   // Reapply maxHeight so the newly active pane scrolls correctly
@@ -116,6 +117,9 @@ function selectBuilding(bid) {
   document.getElementById('cName').textContent = b.name;
   document.getElementById('cType').textContent = b.type;
   document.getElementById('cDepts').innerHTML  = b.depts.map(d => `<div class="dept-item">${d}</div>`).join('');
+
+  const viewFloorsWrap = document.getElementById('viewFloorsWrap');
+  if (viewFloorsWrap) viewFloorsWrap.style.display = (typeof FLOOR_DATA !== 'undefined' && FLOOR_DATA[bid]) ? '' : 'none';
 
   const imgWrap = document.querySelector('.card-img-wrap');
   const imgEl = document.getElementById('cardImg');
@@ -410,6 +414,9 @@ function showPeekCard(bid) {
     : '';
 
   const deptsHTML = b.depts.map(d => `<div class="dept-item">${d}</div>`).join('');
+  const viewFloorsHTML = (typeof FLOOR_DATA !== 'undefined' && FLOOR_DATA[String(bid)])
+    ? `<div class="peek-btns"><button class="btn-sm btn-view-floors" style="width:100%" onclick="FloorUI.openFromCard('${bid}')">⊞ View Floors</button></div>`
+    : '';
 
   el.classList.remove('visible');
   el.innerHTML = `
@@ -419,10 +426,7 @@ function showPeekCard(bid) {
       <div class="peek-name">${b.name}</div>
       <div class="peek-type">${b.type}</div>
       <div class="dept-list" style="margin-bottom:14px">${deptsHTML}</div>
-      <div class="peek-btns">
-        <button class="btn-sm btn-from" onclick="setFrom()">↑ From here</button>
-        <button class="btn-sm btn-to"   onclick="setTo()">↓ To here</button>
-      </div>
+      ${viewFloorsHTML}
     </div>
   `;
   requestAnimationFrame(() => el.classList.add('visible'));
@@ -692,12 +696,3 @@ window.addEventListener('resize', () => {
   });
 })();
 
-/* ════════════════════════════════════════════════════════
-   LEGEND TOGGLE
-════════════════════════════════════════════════════════ */
-let _legendOpen = true;
-function toggleLegend() {
-  _legendOpen = !_legendOpen;
-  document.getElementById('legBody').style.display = _legendOpen ? '' : 'none';
-  document.getElementById('legArrow').textContent  = _legendOpen ? '▾' : '▸';
-}

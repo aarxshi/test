@@ -298,11 +298,7 @@ header {
   border: 1px solid var(--border); border-radius: 10px;
   backdrop-filter: blur(8px); box-shadow: var(--shadow-md);
 }
-.map-legend { bottom: 28px; right: 16px; padding: 10px 12px; }
-.leg-label { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 6px; cursor: pointer; user-select: none; }
-.leg-label:hover { color: var(--text-muted); }
-.leg-item { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-muted); padding: 2px 0; }
-.leg-swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+
 
 .zoom-ctrls { top: 16px; right: 16px; display: flex; flex-direction: column; overflow: hidden; }
 .zbtn { width: 36px; height: 36px; background: none; border: none; border-bottom: 1px solid var(--border); font-size: 18px; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .12s, color .12s; }
@@ -330,9 +326,6 @@ header {
   position: absolute; border-radius: 50%;
   background: rgba(37,99,235,0.12); border: 1px solid rgba(37,99,235,0.25);
   pointer-events: none;
-}
-  70%  { box-shadow: 0 0 0 10px rgba(37,99,235,0); }
-  100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
 }
 
 /* ── TOAST ──────────────────────────────────────────── */
@@ -406,9 +399,6 @@ header {
     touch-action: pan-x pan-y pinch-zoom;
   }
   .zoom-ctrls { top: auto; bottom: 100px; right: 12px; }
-  .map-legend { top: 16px; right: 12px; bottom: auto; padding: 9px 11px; display: none; }
-  .leg-title  { font-size: 9px; margin-bottom: 6px; }
-  .leg-item   { font-size: 10.5px; }
 
   /* Sheet — promoted to its own compositor layer for smooth animation */
   .sidebar {
@@ -601,4 +591,168 @@ header {
     .fab-btn   { padding: 6px; gap: 0; }
     .fab-label { display: none; }
   }
+}
+
+/* ════════════════════════════════════════════════════════
+   FLOORS — integrated into the shared tab bar. The building/floor
+   list and the room reassignment panel live in the sidebar
+   (#pane-floors); the visual floor plan overlays the map canvas only
+   (.floor-plan-area), so the sidebar stays visible the whole time.
+════════════════════════════════════════════════════════ */
+
+/* ── Sidebar: pane-floors shell ───────────────────────── */
+#floorsPaneContent { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+
+.floors-crumb {
+  flex-shrink: 0; display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  font-size: 13px; color: var(--text-muted);
+}
+.floors-crumb-back {
+  width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-muted); cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; transition: background .12s, color .12s;
+}
+.floors-crumb-back:hover { background: var(--surface2); color: var(--accent); }
+.floors-crumb-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.floors-crumb-text b { color: var(--text); font-weight: 500; }
+
+.floors-scroll { flex: 1; overflow-y: auto; min-height: 0; }
+
+/* ── Floor / building list ─────────────────────────────── */
+.floor-list-page { padding: 18px 16px 40px; }
+.page-title { font-family: 'Instrument Serif', serif; font-size: 22px; margin-bottom: 3px; }
+.page-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; }
+
+.floor-row {
+  display: flex; align-items: center; gap: 14px; padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  margin-bottom: 9px; cursor: pointer; transition: border-color .12s, box-shadow .12s;
+}
+.floor-row:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.floor-row.not-digitized { cursor: default; opacity: .55; }
+.floor-row.not-digitized:hover { border-color: var(--border); box-shadow: none; }
+.floor-badge {
+  width: 40px; height: 40px; border-radius: 10px; background: var(--accent-bg); color: var(--accent-dk);
+  font-family: 'Instrument Serif', serif; font-size: 17px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.floor-row.not-digitized .floor-badge { background: var(--surface2); color: var(--text-faint); }
+.floor-info { flex: 1; min-width: 0; }
+.floor-label { font-size: 14.5px; font-weight: 500; margin-bottom: 2px; }
+.floor-meta { font-size: 12px; color: var(--text-muted); }
+.floor-chevron { color: var(--text-faint); flex-shrink: 0; }
+
+/* ── Room list (per-floor, shown before a room is selected) ──── */
+.floors-search { padding: 2px 0 12px; }
+.room-row {
+  display: flex; align-items: center; gap: 11px; padding: 10px 12px;
+  border-radius: 10px; cursor: pointer; transition: background .12s;
+}
+.room-row:hover { background: var(--surface2); }
+.room-row.infra { cursor: default; opacity: .7; }
+.room-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.room-row-txt { flex: 1; min-width: 0; }
+.room-row-name { font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-row-dept { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.room-row-chevron { color: var(--text-faint); flex-shrink: 0; }
+
+/* ── Floor plan — overlays the #map canvas only, sidebar stays put ─ */
+.floor-plan-area {
+  display: none; position: absolute; inset: 0; z-index: 20;
+  background: var(--bg); flex-direction: column;
+}
+.floor-plan-area.open { display: flex; }
+
+.floor-plan-header {
+  height: var(--header-h); flex-shrink: 0; display: flex; align-items: center; gap: 14px;
+  padding: 0 18px; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.floor-plan-crumb { font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.floor-plan-crumb b { color: var(--text); font-weight: 500; }
+.floor-plan-back {
+  margin-left: auto; flex-shrink: 0; display: flex; align-items: center; gap: 6px;
+  padding: 7px 13px; border-radius: 9px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-muted); cursor: pointer; font-family: 'Geist', sans-serif;
+  font-size: 12.5px; transition: background .12s, color .12s;
+}
+.floor-plan-back:hover { background: var(--surface2); color: var(--accent); }
+
+.plan-pane { flex: 1; overflow: auto; background: var(--surface2); padding: 24px; display: flex; align-items: flex-start; justify-content: center; }
+.plan-canvas-wrap { position: relative; background: #fff; box-shadow: var(--shadow-md); border-radius: 4px; }
+.plan-canvas-wrap img { display: block; max-width: none; }
+.plan-svg { position: absolute; top: 0; left: 0; }
+
+/* Rooms carry no fill/label by default so the plan image (which already
+   prints room numbers) stays clean. Color only appears as feedback:
+   a light accent wash on hover/selection — the same "this is clickable"
+   language the campus map uses for buildings.
+   Each room is a <g class="room-poly-group"> that can contain more than
+   one <polygon class="room-poly"> (multi-rectangle / irregular rooms) —
+   hover and selection style the whole group so all pieces highlight together. */
+.room-poly { fill: none; stroke: rgba(20,20,25,.22); stroke-width: 1.5; transition: fill .12s, stroke .12s; pointer-events: fill; }
+.room-poly-group { cursor: pointer; }
+.room-poly-group:hover .room-poly { fill: var(--accent); fill-opacity: .14; stroke: var(--accent); stroke-width: 2; }
+.room-poly-group.selected .room-poly { fill: var(--accent); fill-opacity: .22; stroke: var(--accent); stroke-width: 2.5; }
+/* Infra rooms (lifts, washrooms, stairs...) are still clickable — just
+   for identification, since they can't be reassigned — so they get their
+   own deliberately neutral (non-accent) hover/selected feedback instead
+   of the department blue, so they read as "clickable for info" without
+   looking like a reassignable room. */
+.room-poly-group.infra .room-poly { stroke: rgba(20,20,25,.14); stroke-dasharray: 4 3; }
+.room-poly-group.infra:hover .room-poly { stroke: rgba(20,20,25,.4); }
+.room-poly-group.infra.selected .room-poly { fill: rgba(20,20,25,.09); stroke: rgba(20,20,25,.55); stroke-width: 2; }
+
+/* ── Room detail / reassignment panel (sidebar) ───────────── */
+.side-panel-empty { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column;
+  gap: 10px; color: var(--text-faint); padding: 30px; text-align: center; font-size: 13px; }
+
+.panel-header { padding: 18px 20px 0; }
+.panel-room-type { font-size: 10.5px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; color: var(--text-faint); margin-bottom: 4px; }
+.panel-room-name { font-family: 'Instrument Serif', serif; font-size: 22px; line-height: 1.15; margin-bottom: 2px; }
+.panel-room-cap { font-size: 12.5px; color: var(--text-muted); margin-bottom: 14px; }
+
+.panel-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 20px; }
+.panel-tab { padding: 10px 0; margin-right: 20px; font-size: 13px; color: var(--text-muted); cursor: pointer;
+  border-bottom: 2px solid transparent; }
+.panel-tab.active { color: var(--accent-dk); border-bottom-color: var(--accent); font-weight: 500; }
+.panel-body { flex: 1; overflow-y: auto; padding: 18px 20px; }
+
+/* Optional per-room info — only the rows with a value get rendered
+   (see renderRoomPanel), so an unfilled room shows no table at all.
+   Deliberately quieter than the dept pill / reassignment control below,
+   which stays the primary action in this tab. */
+.room-info-table { border: 1px solid var(--border); border-radius: 9px; margin-bottom: 18px; overflow: hidden; }
+.room-info-row { display: flex; padding: 7px 12px; font-size: 12.5px; border-bottom: 1px solid var(--border); }
+.room-info-row:last-child { border-bottom: none; }
+.room-info-row:nth-child(odd) { background: var(--surface2); }
+.room-info-label { width: 90px; flex-shrink: 0; color: var(--text-muted); }
+.room-info-value { color: var(--text); font-weight: 500; overflow-wrap: anywhere; }
+
+.dept-pill { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 999px;
+  background: var(--surface2); border: 1px solid var(--border); font-size: 13px; font-weight: 500; margin-bottom: 18px; }
+.dept-pill-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+.field-label { font-size: 11px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: var(--text-faint); margin-bottom: 7px; }
+.dept-select { width: 100%; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface);
+  font-family: 'Geist', sans-serif; font-size: 13.5px; color: var(--text); margin-bottom: 12px; }
+.btn-reassign { width: 100%; padding: 10px 0; border-radius: 9px; border: none; background: var(--accent); color: #fff;
+  font-family: 'Geist', sans-serif; font-size: 13.5px; font-weight: 500; cursor: pointer; transition: background .12s; }
+.btn-reassign:hover { background: var(--accent-dk); }
+
+.history-item { padding: 11px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.history-item:last-child { border-bottom: none; }
+.history-change { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; font-weight: 500; }
+.history-time { font-size: 11.5px; color: var(--text-faint); }
+.history-empty { color: var(--text-faint); font-size: 13px; text-align: center; padding: 30px 0; }
+
+.infra-note { background: var(--surface2); border: 1px solid var(--border); border-radius: 9px; padding: 12px 14px;
+  font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
+
+.btn-view-floors { background: var(--accent-bg); color: var(--accent-dk); border: 1px solid var(--accent); }
+.btn-view-floors:hover { background: var(--accent); color: #fff; }
+
+@media (max-width: 767px) {
+  .floor-plan-header { padding: 0 14px; }
+  .floor-plan-back .fp-back-label { display: none; }
+  .plan-pane { padding: 14px; }
 }
