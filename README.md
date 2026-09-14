@@ -1,1 +1,1 @@
-https://campusnav-3hf9.onrender.com
+https://test-sckd.onrender.com
